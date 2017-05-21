@@ -1,18 +1,39 @@
 name:          epic-serv
-version:       0.0.0
-cabal-version: >= 1.8
+version:       0.1.0.0
+cabal-version: >= 1.10
 build-type:    Simple
 
-executable          epic-serv
-    hs-source-dirs: .
-    main-is:        src/Main.hs
-    ghc-options:    -Wall -threaded -O2 -rtsopts -with-rtsopts=-N
-    extensions:     OverloadedStrings
+
+library
+    hs-source-dirs: src
+    exposed-modules: Data.CSV.Parser
     build-depends:  base   >= 4      && < 5
-                  , scotty
-                  , persistent-sqlite >= 2.6.0
+--                  , scotty
+--                  , persistent-sqlite >= 2.6.0
                   , cassava >= 0.4.5.0
-                  , cmdargs >= 0.10.0
                   , time >= 1.6.0.0
                   , vector >= 0.11.0
                   , bytestring >= 0.10.8
+   default-language:    Haskell2010
+
+executable epic-serv-exe
+    hs-source-dirs: app
+    main-is:        Main.hs
+    ghc-options:    -Wall -threaded -O2 -rtsopts -with-rtsopts=-N
+    build-depends:  base
+                  , epic-serv
+                  , cmdargs >= 0.10.0
+   default-language:    Haskell2010
+
+test-suite lib-epic-serv-test
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Spec.hs
+  build-depends:       base
+                     , epic-serv
+                     , hspec
+                     , QuickCheck
+                     , time >= 1.6.0.0
+                     , bytestring >= 0.10.8
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  default-language:    Haskell2010
