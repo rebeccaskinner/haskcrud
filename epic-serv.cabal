@@ -2,7 +2,8 @@ name:          epic-serv
 version:       0.1.0.0
 cabal-version: >= 1.10
 build-type:    Simple
-
+license:       BSD3
+license-file:  LICENSE
 
 library
     hs-source-dirs: src
