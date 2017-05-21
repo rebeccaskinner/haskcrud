@@ -11,3 +11,8 @@ executable          epic-serv
     build-depends:  base   >= 4      && < 5
                   , scotty
                   , persistent-sqlite >= 2.6.0
+                  , cassava >= 0.4.5.0
+                  , cmdargs >= 0.10.0
+                  , time >= 1.6.0.0
+                  , vector >= 0.11.0
+                  , bytestring >= 0.10.8

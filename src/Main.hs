@@ -1,9 +1,20 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+module Main where
 
-import Web.Scotty
+import System.Console.CmdArgs
+
+data ProgramConfig = ProgramConfig { inputCSV :: Maybe FilePath
+                                   , dbaseName :: FilePath
+                                   , listenPort :: Int
+                                   } deriving (Show, Data, Typeable)
 
 main :: IO ()
-main = scotty 3000 $ do
-  get "/:word" $ do
-    beam <- param "word"
-    html $ mconcat ["<h1>Scotty, ", beam, " me up!</h1>"]
+main = do
+  cfg <- cmdArgs config
+  print cfg
+
+
+config = ProgramConfig { inputCSV = Nothing &= help "CSV data used to seed the database" &= typ "filename"
+                       , dbaseName = ":memory:" &= help "Name of the sqlite3 database to use. Defaults to ':memory:' which runs an in-memory database" &= typ "filename"
+                       , listenPort = 8080 &= help "port number to listen on for http request" &= typ "port number"
+                       } &= summary "Serve data"
