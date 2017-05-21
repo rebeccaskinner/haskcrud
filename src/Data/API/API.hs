@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module API where
+module Data.API where
 
 newtype User = String
 
