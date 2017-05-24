@@ -2,6 +2,7 @@
 module Main where
 
 import System.Console.CmdArgs
+import Database.Epicdb
 
 data ProgramConfig = ProgramConfig { inputCSV :: Maybe FilePath
                                    , dbaseName :: FilePath
@@ -12,7 +13,6 @@ main :: IO ()
 main = do
   cfg <- cmdArgs config
   print cfg
-
 
 config = ProgramConfig { inputCSV = Nothing &= help "CSV data used to seed the database" &= typ "filename"
                        , dbaseName = ":memory:" &= help "Name of the sqlite3 database to use. Defaults to ':memory:' which runs an in-memory database" &= typ "filename"

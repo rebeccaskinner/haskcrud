@@ -8,13 +8,21 @@ license-file:  LICENSE
 library
     hs-source-dirs: src
     exposed-modules: Data.CSV.Parser
+                   , Database.Epicdb
     build-depends:  base   >= 4      && < 5
---                  , scotty
---                  , persistent-sqlite >= 2.6.0
+                  , persistent >= 2.6.0
+                  , persistent-sqlite >= 2.6.0
+                  , persistent-template >= 2.5.2
+                  , monad-logger >= 0.3.24
+                  , resourcet >= 1.1.9
                   , cassava >= 0.4.5.0
                   , time >= 1.6.0.0
                   , vector >= 0.11.0
                   , bytestring >= 0.10.8
+                  , text >= 1.2.2.1
+                  , transformers >= 0.4.2.0
+                  , stm >= 2.4.4.1
+                  , ghc-prim >= 0.5.0.0
    default-language:    Haskell2010
 
 executable epic-serv-exe
@@ -26,7 +34,7 @@ executable epic-serv-exe
                   , cmdargs >= 0.10.0
    default-language:    Haskell2010
 
-test-suite lib-epic-serv-test
+test-suite epic-serv-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
