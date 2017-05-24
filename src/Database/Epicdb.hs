@@ -16,6 +16,7 @@ module Database.Epicdb ( runDB
                        , getRows
                        , getUsers
                        , getBars
+                       , DenormalizedRow (..)
                        )  where
 
 import Database.Persist.Sqlite
