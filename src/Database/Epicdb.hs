@@ -6,6 +6,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Database.Epicdb where
 
@@ -13,10 +15,10 @@ import Database.Persist.Sqlite
 import Database.Persist.TH
 import Data.Time.Clock
 import Data.Maybe
-import Data.Text (pack)
 import Control.Monad.IO.Class
 import Control.Monad
-import Control.Concurrent.STM.TChan
+import Control.Concurrent
+import Control.Monad.Trans.Reader
 
 -- NB: The approach to DB persistence here is a bit weird. the
 -- persist-* family of libraries seem to be designed to integrate well
@@ -42,13 +44,10 @@ Consumption
   deriving Show
 |]
 
--- Unit type that exists to be a phantom type for DBCommand
-data PersistConn = PeristConn
-
 -- NB: We could use free monads here to build up a small DSL for
 -- sending DB operations through the channels.  For simplicity and
 -- timliness I decided to just use a sum type for this exercise.
-data DBCommand = DBInsert | DBListUsers | DBListBars | DBListConsumers deriving (Eq, Show)
+data DBCommand = DBInsert DenormalizedRow | DBListUsers | DBListBars | DBListConsumers deriving (Eq, Show)
 
 data DenormalizedRow =
   DenormalizedRow { personField :: String
@@ -56,6 +55,10 @@ data DenormalizedRow =
                   , timestamp   :: UTCTime
                   } deriving (Eq, Show)
 
+
+-- Unit type that exists to be a phantom type for DBCommand
+data Connected = Connected deriving (Eq, Show)
+data Disconnected = Disconnected deriving (Eq, Show)
 
 -- NB: Rather than inverting control to run the rest of the
 -- application inside of the in-memory database process, I
@@ -68,46 +71,115 @@ data DenormalizedRow =
 -- above, we could use a free monad based DSL for describing queries,
 -- and it would be reasonable to respond over a single channel
 -- containing something like a SQLValue type.
-data DBConnectionMgr a =
-  DBConnectionMgr { insertChan    :: TChan DenormalizedRow
-                  , usersChan     :: TChan [String]
-                  , barsChan      :: TChan [String]
-                  , consumersChan :: TChan [DenormalizedRow]
-                  , cmdChan       :: TChan DBCommand
-                  }
+data DBConnectionMgr a b =
+  DBConnectionMgr { cmdChan :: Chan DBCommand
+                  , respChan :: Chan DBResponse
+                  , dbResponse :: b
+                  } deriving (Eq)
 
+data DBResponse =
+  InsertResponse (Key Consumption)
+  | UserQueryResponse [String]
+  | BarQueryResponse [String]
+  | ListQueryResponse [DenormalizedRow] deriving (Eq, Show)
 
-mkConnectionMgr :: IO (DBConnectionMgr PersistConn)
-mkConnectionMgr =
-  DBConnectionMgr
-  <$> newTChanIO
-  <*> newTChanIO
-  <*> newTChanIO
-  <*> newTChanIO
-  <*> newTChanIO
+mkConnectionMgr :: IO (DBConnectionMgr Disconnected ())
+mkConnectionMgr = DBConnectionMgr <$> newChan <*> newChan <*> return ()
 
-initDB :: String -> IO ()
-initDB dbPath = runSqlite (pack dbPath) $ do
-  runMigration migrateAll
-  now <- liftIO getCurrentTime
-  cid <- insertDenormalizedRow $ DenormalizedRow "rebecca" "tofu" now
-  cid <- insertDenormalizedRow $ DenormalizedRow "rebecca" "seitan" now
-  cid <- insertDenormalizedRow $ DenormalizedRow "rebecca" "carrot" now
-  r <- denormalizedRows
-  liftIO $ print r
-  return ()
+addRow :: DenormalizedRow -> DBConnectionMgr Connected a -> IO (DBConnectionMgr Connected (Key Consumption))
+addRow row (DBConnectionMgr req resp _) = do
+  val <- writeChan req (DBInsert row) >> readChan resp
+  case val of
+    InsertResponse k -> return $ DBConnectionMgr req resp k
+    _ -> fail "invalid response type"
 
+getRows :: DBConnectionMgr Connected a -> IO (DBConnectionMgr Connected [DenormalizedRow])
+getRows (DBConnectionMgr req resp _) =  do
+  val <- writeChan req DBListConsumers >> readChan resp
+  case val of
+    ListQueryResponse rows -> return $ DBConnectionMgr req resp rows
+    _ -> fail "unexpected response type"
+
+getUsers :: DBConnectionMgr Connected a -> IO (DBConnectionMgr Connected [String])
+getUsers (DBConnectionMgr req resp _) =  do
+  val <- writeChan req DBListUsers >> readChan resp
+  case val of
+    UserQueryResponse rows -> return $ DBConnectionMgr req resp rows
+    _ -> fail "unexpected response type"
+
+getBars :: DBConnectionMgr Connected a -> IO (DBConnectionMgr Connected [String])
+getBars (DBConnectionMgr req resp _) =  do
+  val <- writeChan req DBListUsers >> readChan resp
+  case val of
+    BarQueryResponse rows -> return $ DBConnectionMgr req resp rows
+    _ -> fail "unexpected response type"
+
+initDB :: DBConnectionMgr Disconnected () -> IO (DBConnectionMgr Connected ())
+initDB (DBConnectionMgr req resp _) = do
+  let db = DBConnectionMgr req resp ()
+  _ <- forkIO $ runSqlite ":memory:" $ do
+    runMigration migrateAll
+    forever handleCmd
+  return db
+  where
+    handleCmd :: (MonadIO m) => ReaderT SqlBackend m ()
+    handleCmd = do
+      cmd <- (liftIO . readChan) req
+      case cmd of
+        DBInsert i -> do
+          key <- insertDenormalizedRow i
+          (liftIO . writeChan resp) (InsertResponse key)
+        DBListConsumers -> do
+          users <- denormalizedRows
+          (liftIO . writeChan resp) (ListQueryResponse users)
+        DBListUsers -> do
+          users <- dbUsers
+          (liftIO . writeChan resp) (UserQueryResponse users)
+        DBListBars -> do
+          bars <- dbBars
+          (liftIO . writeChan resp) (UserQueryResponse bars)
+      return ()
+
+denormalizedRows :: (MonadIO m) => ReaderT SqlBackend m [DenormalizedRow]
 denormalizedRows = do
   rows <- selectList ([] :: [Filter Consumption]) []
   let keys = map entityKey rows
   rows' <- mapM getDenormalizedRow keys
   return $ catMaybes rows'
 
+dbUsers :: (MonadIO m) => ReaderT SqlBackend m [String]
+dbUsers = do
+  rows <- selectList ([] :: [Filter Person]) []
+  let names = map (personName . entityVal) rows
+  return names
+
+dbBars :: (MonadIO m) => ReaderT SqlBackend m [String]
+dbBars = do
+  rows <- selectList ([] :: [Filter Bar]) []
+  let types = map (barType . entityVal) rows
+  return types
+
+insertDenormalizedRow :: (MonadIO m) => DenormalizedRow -> ReaderT SqlBackend m (Key Consumption)
 insertDenormalizedRow (DenormalizedRow name bar date) = do
-  name' <- insert $ Person name
-  bar' <- insert $ Bar bar
+  name' <- addUserIfMissing name
+  bar' <- addBarIfMissing bar
   insert $ Consumption name' bar' date
 
+addUserIfMissing :: (MonadIO m) => String -> ReaderT SqlBackend m (Key Person)
+addUserIfMissing name = do
+  entries <- selectList [PersonName ==. name] []
+  if null entries
+    then insert $ Person name
+    else return $ (entityKey . head) entries
+
+addBarIfMissing :: (MonadIO m) => String -> ReaderT SqlBackend m (Key Bar)
+addBarIfMissing kind = do
+  entries <- selectList [BarType ==. kind] []
+  if null entries
+    then insert $ Bar kind
+    else return $ (entityKey . head) entries
+
+getDenormalizedRow :: (MonadIO m) => Key Consumption -> ReaderT SqlBackend m (Maybe DenormalizedRow)
 getDenormalizedRow cid = do
   consumption <- getEntity cid
   case consumption of
