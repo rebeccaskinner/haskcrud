@@ -8,8 +8,15 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE BangPatterns #-}
+{-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
-module Database.Epicdb where
+module Database.Epicdb ( runDB
+                       , DBConnectionMgr (dbResponse)
+                       , addRow
+                       , getRows
+                       , getUsers
+                       , getBars
+                       )  where
 
 import Database.Persist.Sqlite
 import Database.Persist.TH
@@ -23,7 +30,7 @@ import Control.Monad.Trans.Reader
 -- NB: The approach to DB persistence here is a bit weird. the
 -- persist-* family of libraries seem to be designed to integrate well
 -- with Yesod's TH magic and there are some quirks with breaking
--- outside of those assumptions- especiallyl under time constraints.
+-- outside of those assumptions- especially under time constraints.
 -- I believe that this is the weakest part of the application,
 -- architecturally, due in part to an impedence mismatch between the
 -- exercise application architecture and the expectations of the
@@ -56,21 +63,19 @@ data DenormalizedRow =
                   } deriving (Eq, Show)
 
 
--- Unit type that exists to be a phantom type for DBCommand
+-- Define connected and disconnected as phantom types to ensure that
+-- we're only performing DB operations on an operation that's been
+-- connected to a db instance
 data Connected = Connected deriving (Eq, Show)
 data Disconnected = Disconnected deriving (Eq, Show)
 
 -- NB: Rather than inverting control to run the rest of the
--- application inside of the in-memory database process, I
--- decided to opt for an asynchronous messaging architecture where we
--- spawn off a thread to handle DB queries.  For timliness and
--- simplicity we're using separate TChans for each of the know query
--- types.  If we expected that we'd need to do more sophisticated DB
--- queries, or might be regularly updating the schema or number of
--- queries, then we'd probably want to refactor this.  As mentioned
--- above, we could use a free monad based DSL for describing queries,
--- and it would be reasonable to respond over a single channel
--- containing something like a SQLValue type.
+-- application inside of the in-memory database process, I decided to
+-- opt for an asynchronous messaging architecture where we spawn off a
+-- thread to handle DB queries.  For timliness and simplicity we're
+-- using a pair of Chan's to mimick a synchronous full-duplex
+-- connection.  We could use STM here to introduce some guarentees at
+-- the cost of some complexity and performance.
 data DBConnectionMgr a b =
   DBConnectionMgr { cmdChan :: Chan DBCommand
                   , respChan :: Chan DBResponse
@@ -113,6 +118,9 @@ getBars (DBConnectionMgr req resp _) =  do
   case val of
     BarQueryResponse rows -> return $ DBConnectionMgr req resp rows
     _ -> fail "unexpected response type"
+
+runDB :: IO (DBConnectionMgr Connected ())
+runDB = mkConnectionMgr >>= initDB
 
 initDB :: DBConnectionMgr Disconnected () -> IO (DBConnectionMgr Connected ())
 initDB (DBConnectionMgr req resp _) = do
