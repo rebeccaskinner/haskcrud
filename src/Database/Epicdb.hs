@@ -16,6 +16,7 @@ import Database.Persist.Sqlite
 import Database.Persist.TH
 import Data.Time.Clock
 import Data.Maybe
+import Data.Aeson
 import Control.Monad.IO.Class
 import Control.Monad
 import Control.Concurrent
@@ -56,6 +57,20 @@ data DenormalizedRow =
                   , timestamp   :: UTCTime
                   } deriving (Eq, Show)
 
+instance ToJSON DenormalizedRow where
+  toJSON (DenormalizedRow name bar time) =
+    object [ "person" .= name
+           , "bar" .= bar
+           , "date" .= time
+           ]
+
+instance FromJSON DenormalizedRow where
+  parseJSON (Object v) =
+    DenormalizedRow <$>
+    v .: "person" <*>
+    v .: "bar" <*>
+    v .: "date"
+  parseJSON _ = mzero
 
 -- Define connected and disconnected as phantom types to ensure that
 -- we're only performing DB operations on an operation that's been
