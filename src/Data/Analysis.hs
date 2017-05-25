@@ -45,7 +45,6 @@ biggestList = maximumBy largestList
 -- arbitrary time of day on the day of the month that had the most
 -- consumption
 mostPerMonth :: [DenormalizedRow] -> [UTCTime]
--- mostPerMonth = map (timestamp . head . snd) . map (biggestList . snd) . monthsAndDays
 mostPerMonth = map ((timestamp . head . snd) . biggestList . snd) . monthsAndDays
 
 parseFile :: FilePath -> IO (Either String [DenormalizedRow])
@@ -80,7 +79,7 @@ getRun lst =
 longestRun :: [DenormalizedRow] -> [UTCTime]
 longestRun l =
   let runs = map getRun $ filter (not . null) $ tails l in
-    maximumBy runLength runs
+    reverse $ maximumBy runLength runs
   where
     runLength a b = length a `compare` length b
 
