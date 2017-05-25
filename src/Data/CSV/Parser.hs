@@ -12,7 +12,6 @@ import Data.Csv
 import qualified Data.Vector as V
 import Data.Time.Format
 import Data.Time.Clock
-import Data.String
 import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Data.ByteString.Char8 as NB
 
