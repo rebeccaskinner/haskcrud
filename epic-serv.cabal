@@ -8,6 +8,7 @@ license-file:  LICENSE
 library
     hs-source-dirs: src
     exposed-modules: Data.CSV.Parser
+                   , Data.Analysis
                    , Database.Epicdb
     build-depends:  base   >= 4      && < 5
                   , persistent >= 2.6.0
