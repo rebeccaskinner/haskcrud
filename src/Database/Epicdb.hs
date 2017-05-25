@@ -10,14 +10,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
-module Database.Epicdb ( runDB
-                       , DBConnectionMgr (dbResponse)
-                       , addRow
-                       , getRows
-                       , getUsers
-                       , getBars
-                       , DenormalizedRow (..)
-                       )  where
+module Database.Epicdb where
 
 import Database.Persist.Sqlite
 import Database.Persist.TH
@@ -115,7 +108,7 @@ getUsers (DBConnectionMgr req resp _) =  do
 
 getBars :: DBConnectionMgr Connected a -> IO (DBConnectionMgr Connected [String])
 getBars (DBConnectionMgr req resp _) =  do
-  val <- writeChan req DBListUsers >> readChan resp
+  val <- writeChan req DBListBars >> readChan resp
   case val of
     BarQueryResponse rows -> return $ DBConnectionMgr req resp rows
     _ -> fail "unexpected response type"
@@ -126,7 +119,7 @@ runDB = mkConnectionMgr >>= initDB
 initDB :: DBConnectionMgr Disconnected () -> IO (DBConnectionMgr Connected ())
 initDB (DBConnectionMgr req resp _) = do
   let db = DBConnectionMgr req resp ()
-  _ <- forkIO $ runSqlite ":memory:" $ do
+  _ <- forkIO $ runSqlite "WAL=off :memory:" $ do
     runMigration migrateAll
     forever handleCmd
   return db
@@ -146,7 +139,7 @@ initDB (DBConnectionMgr req resp _) = do
           (liftIO . writeChan resp) (UserQueryResponse users)
         DBListBars -> do
           bars <- dbBars
-          (liftIO . writeChan resp) (UserQueryResponse bars)
+          (liftIO . writeChan resp) (BarQueryResponse bars)
       return ()
 
 denormalizedRows :: (MonadIO m) => ReaderT SqlBackend m [DenormalizedRow]
