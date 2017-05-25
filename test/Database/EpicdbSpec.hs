@@ -20,6 +20,17 @@ spec = do
       _ <- addRow (DenormalizedRow "rebecca" "seitan" now) conn
       rowsAfterInsert <- dbResponse <$> getRows conn
       length rowsAfterInsert `shouldBe` 1
+    it "adds several rows" $ do
+      now <- getCurrentTime
+      conn <- initDB =<< mkConnectionMgr
+      rowsBeforeInsert <- dbResponse <$> getRows conn
+      length rowsBeforeInsert `shouldBe` 0
+      let rows = [ DenormalizedRow "rebecca" "seitan" now
+                 , DenormalizedRow "rebecca" "seitan" now
+                 , DenormalizedRow "rebecca" "seitan" now
+                 ]
+      insertKeys <- dbResponse <$> addRows rows conn
+      length insertKeys `shouldBe` length rows
     it "returns an inserted row correctly" $ do
       now <- getCurrentTime
       let row = (DenormalizedRow "rebecca" "seitan" now)
