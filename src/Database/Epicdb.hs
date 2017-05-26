@@ -91,6 +91,9 @@ data DBConnectionMgr a b =
                   , dbResponse :: b
                   } deriving (Eq)
 
+instance Functor (DBConnectionMgr a) where
+  f `fmap` (DBConnectionMgr c r v) = DBConnectionMgr c r (f v)
+
 data DBResponse =
   InsertResponse (Key Consumption)
   | UserQueryResponse [String]
@@ -106,6 +109,10 @@ addRow row (DBConnectionMgr req resp _) = do
   case val of
     InsertResponse k -> return $ DBConnectionMgr req resp k
     _ -> fail "invalid response type"
+
+addRows :: [DenormalizedRow] -> DBConnectionMgr Connected a -> IO (DBConnectionMgr Connected (Key Consumption))
+addRows !rows (DBConnectionMgr req resp _) =
+  foldl (\c e -> c >>= addRow e) (return $ DBConnectionMgr req resp undefined) rows
 
 getRows :: DBConnectionMgr Connected a -> IO (DBConnectionMgr Connected [DenormalizedRow])
 getRows (DBConnectionMgr req resp _) =  do
