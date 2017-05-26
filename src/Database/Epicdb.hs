@@ -85,6 +85,8 @@ data Disconnected = Disconnected deriving (Eq, Show)
 -- using a pair of Chan's to mimick a synchronous full-duplex
 -- connection.  We could use STM here to introduce some guarentees at
 -- the cost of some complexity and performance.
+
+-- | Manage the database through a pair of Chans
 data DBConnectionMgr a b =
   DBConnectionMgr { cmdChan :: Chan DBCommand
                   , respChan :: Chan DBResponse
@@ -100,9 +102,12 @@ data DBResponse =
   | BarQueryResponse [String]
   | ListQueryResponse [DenormalizedRow] deriving (Eq, Show)
 
+-- | Create a disconnected connection. It must be initialized by
+-- calling initDB before it can be used
 mkConnectionMgr :: IO (DBConnectionMgr Disconnected ())
 mkConnectionMgr = DBConnectionMgr <$> newChan <*> newChan <*> return ()
 
+-- | Insert a row into the database
 addRow :: DenormalizedRow -> DBConnectionMgr Connected a -> IO (DBConnectionMgr Connected (Key Consumption))
 addRow row (DBConnectionMgr req resp _) = do
   val <- writeChan req (DBInsert row) >> readChan resp
@@ -110,10 +115,12 @@ addRow row (DBConnectionMgr req resp _) = do
     InsertResponse k -> return $ DBConnectionMgr req resp k
     _ -> fail "invalid response type"
 
+-- | Insert serveral rows into the database, returning the key of the last inserted row
 addRows :: [DenormalizedRow] -> DBConnectionMgr Connected a -> IO (DBConnectionMgr Connected (Key Consumption))
 addRows !rows (DBConnectionMgr req resp _) =
   foldl (\c e -> c >>= addRow e) (return $ DBConnectionMgr req resp undefined) rows
 
+-- | Get all the rows from the database
 getRows :: DBConnectionMgr Connected a -> IO (DBConnectionMgr Connected [DenormalizedRow])
 getRows (DBConnectionMgr req resp _) =  do
   val <- writeChan req DBListConsumers >> readChan resp
@@ -121,6 +128,7 @@ getRows (DBConnectionMgr req resp _) =  do
     ListQueryResponse rows -> return $ DBConnectionMgr req resp rows
     _ -> fail "unexpected response type"
 
+-- | Get a list of people from the database
 getUsers :: DBConnectionMgr Connected a -> IO (DBConnectionMgr Connected [String])
 getUsers (DBConnectionMgr req resp _) =  do
   val <- writeChan req DBListUsers >> readChan resp
@@ -128,6 +136,7 @@ getUsers (DBConnectionMgr req resp _) =  do
     UserQueryResponse rows -> return $ DBConnectionMgr req resp rows
     _ -> fail "unexpected response type"
 
+-- | Get a list of bars from the database
 getBars :: DBConnectionMgr Connected a -> IO (DBConnectionMgr Connected [String])
 getBars (DBConnectionMgr req resp _) =  do
   val <- writeChan req DBListBars >> readChan resp
@@ -135,9 +144,12 @@ getBars (DBConnectionMgr req resp _) =  do
     BarQueryResponse rows -> return $ DBConnectionMgr req resp rows
     _ -> fail "unexpected response type"
 
+-- | Start up an ephemeral databse inside of an IO context, and return a connection to it
 runDB :: IO (DBConnectionMgr Connected ())
 runDB = mkConnectionMgr >>= initDB
 
+-- | Start up an ephemral database inside of an IO context, and manage
+-- it through the provided connection
 initDB :: DBConnectionMgr Disconnected () -> IO (DBConnectionMgr Connected ())
 initDB (DBConnectionMgr req resp _) = do
   let db = DBConnectionMgr req resp ()
@@ -164,6 +176,7 @@ initDB (DBConnectionMgr req resp _) = do
           (liftIO . writeChan resp) (BarQueryResponse bars)
       return ()
 
+-- | Fetch a list of rows from the database
 denormalizedRows :: (MonadIO m) => ReaderT SqlBackend m [DenormalizedRow]
 denormalizedRows = do
   rows <- selectList ([] :: [Filter Consumption]) []
@@ -171,24 +184,28 @@ denormalizedRows = do
   rows' <- mapM getDenormalizedRow keys
   return $ catMaybes rows'
 
+-- | Fetch a list of users from the database
 dbUsers :: (MonadIO m) => ReaderT SqlBackend m [String]
 dbUsers = do
   rows <- selectList ([] :: [Filter Person]) []
   let names = map (personName . entityVal) rows
   return names
 
+-- | Fetch a list of bars from the database
 dbBars :: (MonadIO m) => ReaderT SqlBackend m [String]
 dbBars = do
   rows <- selectList ([] :: [Filter Bar]) []
   let types = map (barType . entityVal) rows
   return types
 
+-- | Insert a new consumption record, creating users and bars on demand
 insertDenormalizedRow :: (MonadIO m) => DenormalizedRow -> ReaderT SqlBackend m (Key Consumption)
 insertDenormalizedRow (DenormalizedRow name bar date) = do
   name' <- addUserIfMissing name
   bar' <- addBarIfMissing bar
   insert $ Consumption name' bar' date
 
+-- | Try to look up a user, if no user exists add it
 addUserIfMissing :: (MonadIO m) => String -> ReaderT SqlBackend m (Key Person)
 addUserIfMissing name = do
   entries <- selectList [PersonName ==. name] []
@@ -196,6 +213,7 @@ addUserIfMissing name = do
     then insert $ Person name
     else return $ (entityKey . head) entries
 
+-- | Try to look up a bar, if no bar exists add it
 addBarIfMissing :: (MonadIO m) => String -> ReaderT SqlBackend m (Key Bar)
 addBarIfMissing kind = do
   entries <- selectList [BarType ==. kind] []
@@ -203,6 +221,7 @@ addBarIfMissing kind = do
     then insert $ Bar kind
     else return $ (entityKey . head) entries
 
+-- | Manually reconcile foreign keys to create a denormalized db row
 getDenormalizedRow :: (MonadIO m) => Key Consumption -> ReaderT SqlBackend m (Maybe DenormalizedRow)
 getDenormalizedRow cid = do
   consumption <- getEntity cid
