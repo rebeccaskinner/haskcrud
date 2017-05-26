@@ -12,7 +12,7 @@ stack:
 
  - To build the application use: `stack build`
  - To run the unit tests use: `stack test`
- - To run the application without installing it, use: `stack exec epic-serv`
+ - To run the application without installing it, use: `stack exec epic-serv-exec`
  - To install the application system wide, run: `stack install`
 
 ## Running
