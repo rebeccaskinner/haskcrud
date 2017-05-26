@@ -5,17 +5,23 @@ module Network.API where
 
 import Control.Monad.IO.Class
 import Web.Scotty
-import Network.Wai.Middleware.Static
+import Network.Wai
 import Network.Wai.Handler.Warp
 import Data.Analysis
 import Database.Epicdb
-import Debug.Trace
 
+app :: DBConnectionMgr Connected a -> IO Application
+app conn = scottyApp $ runAPI conn
 
-runAPI :: DBConnectionMgr Connected a -> Port -> IO ()
-runAPI conn port =  scotty port $ do
+runApp :: Port -> DBConnectionMgr Connected a -> IO ()
+runApp port conn = scotty port $ runAPI conn
+
+runAPI :: DBConnectionMgr Connected a -> ScottyM ()
+runAPI conn =  do
+  get "/records" $ do -- Added for manual testing
+    rows <- liftIO $ dbResponse <$> getRows conn
+    json $ rows
   get "/users" $ do
-    trace "got a call to users" $ return ()
     users <- liftIO $ dbResponse <$> getUsers conn
     json $ users
   get "/bars" $ do
@@ -27,3 +33,7 @@ runAPI conn port =  scotty port $ do
   get "/bestdays" $ do
     rows <- liftIO $ dbResponse <$> getRows conn
     json $ mostPerMonth rows
+  post "/add" $ do
+    b <- jsonData
+    row <- liftIO $ dbResponse <$> addRow b conn
+    json $ row

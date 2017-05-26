@@ -29,8 +29,10 @@ spec = do
                  , DenormalizedRow "rebecca" "seitan" now
                  , DenormalizedRow "rebecca" "seitan" now
                  ]
-      insertKeys <- dbResponse <$> addRows rows conn
-      length insertKeys `shouldBe` length rows
+      _ <- dbResponse <$> addRows rows conn
+      rowsAfterInsert <- dbResponse <$> getRows conn
+      length rowsAfterInsert `shouldBe` length rows
+
     it "returns an inserted row correctly" $ do
       now <- getCurrentTime
       let row = (DenormalizedRow "rebecca" "seitan" now)
